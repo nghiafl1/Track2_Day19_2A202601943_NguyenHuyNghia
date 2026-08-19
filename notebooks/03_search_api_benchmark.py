@@ -37,7 +37,7 @@ proc = subprocess.Popen(
 
 # Đợi server up + warm (Searcher.from_corpus loads embeddings + indexes 1000 docs)
 URL = "http://localhost:8000"
-for _ in range(60):
+for _ in range(180):
     try:
         r = httpx.get(f"{URL}/healthz", timeout=2.0)
         if r.status_code == 200 and r.json().get("ready"):
@@ -46,7 +46,7 @@ for _ in range(60):
         pass
     time.sleep(1)
 else:
-    raise RuntimeError("API didn't become ready within 60s")
+    raise RuntimeError("API didn't become ready within 180s")
 
 print(httpx.get(f"{URL}/healthz").json())
 
@@ -76,6 +76,13 @@ import json
 
 DATA = ROOT / "data"
 golden = [json.loads(l) for l in (DATA / "golden_set.jsonl").open(encoding="utf-8")]
+
+print("Warming up API (20 queries)...")
+for _ in range(2):
+    for q in golden[:10]:
+        httpx.get(f"{URL}/search", params={"q": q["query"], "mode": "hybrid"})
+print("Warm-up complete!")
+
 
 
 def percentile(values: list[float], p: float) -> float:
@@ -128,7 +135,11 @@ else:
 
 # %%
 proc.terminate()
-proc.wait(timeout=5)
+try:
+    proc.wait(timeout=5)
+except subprocess.TimeoutExpired:
+    proc.kill()
+    proc.wait()
 print("API server stopped")
 
 # %% [markdown]
